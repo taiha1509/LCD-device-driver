@@ -58,7 +58,7 @@ void lcd_enable(void) {
 void lcd_send_byte(char data) {
 	int i;
 	for(i=0; i<8; i++)
-		// send data to pin data 0xff => 11111111
+		// set tung gia tri bit cho cac chan pin
 		gpio_set_value(gpios[i+2], ((data) & (1<<i)) >> i);
 	lcd_enable();
 	msleep(5);
@@ -91,7 +91,7 @@ void lcd_send_byte(char data) {
  */
 
 void lcd_command(uint8_t data) {
- 	gpio_set_value(REGISTER_SELECT, LOW);	
+ 	gpio_set_value(REGISTER_SELECT, LOW);
 	lcd_send_byte(data);
 }
 
@@ -107,8 +107,8 @@ void lcd_data(uint8_t data) {
 
 
 /**
- * sned buffer data or command
- * send data to device, return the number of bute success written
+ * send buffer data or command
+ * send data to device, return the number of byte success written
  * ssize_t (*write) (struct file *, const char _ _user *, size_t, loff_t *);
  */
 static ssize_t driver_write(struct file *File, const char *user_buffer, size_t count, loff_t *offs) {
@@ -116,6 +116,7 @@ static ssize_t driver_write(struct file *File, const char *user_buffer, size_t c
 	to_copy = min(count, sizeof(lcd_buffer));
 	not_copied = copy_from_user(lcd_buffer, user_buffer, to_copy);
 	delta = to_copy - not_copied;
+	// clear LCD screen
 	lcd_command(0x1);
 	for(i=0; i<to_copy; i++)
 		lcd_data(lcd_buffer[i]);
@@ -162,6 +163,7 @@ static int __init ModuleInit(void) {
 		printk("Device Nr. could not be allocated!\n");
 		return -1;
 	}
+	// in ra major va minor number (20bit dau va 12 bit con lai)
 	printk("Nr. Major: %d, Minor: %d was registered!\n", dev_type >> 20, dev_type && 0xfffff);
 
 	//This will create the struct class for our device driver. It will create a structure under/sys/class/.
@@ -199,7 +201,13 @@ static int __init ModuleInit(void) {
 	/*Khoi tao GPIO, request chan*/
 	printk("lcd-driver - GPIO Init\n");
 	for(i=0; i<10; i++) {
-		if(gpio_request(gpios[i], names[i])) {
+		/*
+		int gpio_request(unsigned gpio, const char *label)
+		gpio : GPIO that you are planning to use.
+		label :  label used by the kernel for the GPIO in sysfs. You can provide any string that can be seen in /sys/kernel/debug/gpio. Do cat /sys/kernel/debug/gpio. You can see the GPIO assigned to the particular GPIO.
+		It returns 0 in success and a negative number in failure.
+		*/
+		if(gpio_request(gpios[i], names[i]) < 0) {
 			printk("lcd-driver - Error Init GPIO %d\n", gpios[i]);
 			goto GpioInitError;
 		}
@@ -219,7 +227,7 @@ static int __init ModuleInit(void) {
 
 	lcd_command(0xf);	/* Bat man hinh, bat con tro, dat nhap nhay con tro*/
 
-	lcd_command(0x1);
+	lcd_command(0x1);	/* clear screen */
 
 	char text[] = "Hello World!";
 	for(i=0; i<sizeof(text)-1;i++)
@@ -265,3 +273,6 @@ static void __exit ModuleExit(void) {
 
 module_init(ModuleInit);
 module_exit(ModuleExit);
+
+//testing the driver: echo 1 /dev/lcd
+// it should call open, write and release function above
